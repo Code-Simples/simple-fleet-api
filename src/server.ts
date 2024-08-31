@@ -1,39 +1,57 @@
 import Fastify from 'fastify'
 import fastifyMongo from '@fastify/mongodb'
-import fastifyCors from '@fastify/cors'
+import WebSocket from 'ws'
 
 const fastify = Fastify({ logger: false })
 
-// Configurar CORS
-fastify.register(fastifyCors, {
-  origin: '*', // Permitir todas as origens. Para segurança, especifique as origens permitidas.
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Métodos HTTP permitidos
-})
-
-// Conectar ao MongoDB
 fastify.register(fastifyMongo, {
   forceClose: true,
   url: process.env.DATABASE_URL,
 })
 
-// Rotas
-fastify.get('/', async (request, reply) => {
-  reply.send('simple-fleet-api')
-})
+const clients = new Set()
 
-fastify.get('/historics', async (request, reply) => {
-  const collection = fastify.mongo.db.collection('Historic')
-  const result = await collection.find().toArray()
-  reply.send(result)
-})
-
-// Iniciar o servidor
 const start = async () => {
   try {
     await fastify.listen({ port: 3333 })
-    console.log(
-      `Server listening on http://localhost:${fastify.server.address().port}`,
-    )
+    console.log(`Server running 🚀`)
+
+    const wss = new WebSocket.Server({ server: fastify.server })
+
+    wss.on('connection', async (ws) => {
+      console.log('WebSocket client connected')
+      clients.add(ws) // Adiciona o cliente à lista
+
+      const collection = fastify.mongo.client
+        .db('simple-fleet')
+        .collection('Historic')
+
+      const data = await collection.find().toArray()
+      ws.send(JSON.stringify({ data }))
+
+      const changeStream = collection.watch()
+
+      changeStream.on('change', async (change) => {
+        console.log('Change detected:', change)
+
+        const updatedData = await collection.find().toArray()
+
+        clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ data: updatedData }))
+          }
+        })
+      })
+
+      ws.on('close', () => {
+        console.log('WebSocket client disconnected')
+        clients.delete(ws)
+
+        if (clients.size === 0) {
+          changeStream.close()
+        }
+      })
+    })
   } catch (err) {
     fastify.log.error(err)
     process.exit(1)
