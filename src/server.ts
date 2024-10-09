@@ -1,22 +1,48 @@
 import Fastify from 'fastify'
 import fastifyMongo from '@fastify/mongodb'
+import fastifyCors from '@fastify/cors'
+import fastifyCookie from '@fastify/cookie'
+import fastifyJwt from '@fastify/jwt'
+
 import WebSocket from 'ws'
 
 import { usersRoutes } from '@/http/controllers/users/routes'
 
+import { env } from '@/env'
+
 const fastify = Fastify({ logger: false })
+
+fastify.register(fastifyCors, {
+  origin: ['http://localhost:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  credentials: true,
+  maxAge: 86400,
+})
+
+fastify.register(fastifyJwt, {
+  secret: env.JWT_SECRET,
+  cookie: {
+    cookieName: 'refreshToken',
+    signed: false,
+  },
+  sign: { expiresIn: '15m' },
+})
 
 fastify.register(fastifyMongo, {
   forceClose: true,
   url: process.env.DATABASE_URL,
 })
 
-const clients = new Set()
+fastify.register(fastifyCookie)
 
 // Rotas HTTP
 fastify.register(usersRoutes)
 
 const start = async () => {
+  const clients = new Set()
+
+
   try {
     await fastify.listen({ port: 3333 })
 
