@@ -2,6 +2,8 @@ import Fastify from 'fastify'
 import fastifyMongo from '@fastify/mongodb'
 import WebSocket from 'ws'
 
+import { usersRoutes } from '@/http/controllers/users/routes'
+
 const fastify = Fastify({ logger: false })
 
 fastify.register(fastifyMongo, {
@@ -11,10 +13,12 @@ fastify.register(fastifyMongo, {
 
 const clients = new Set()
 
+// Rotas HTTP
+fastify.register(usersRoutes)
+
 const start = async () => {
   try {
     await fastify.listen({ port: 3333 })
-    console.log(`Server running 🚀`)
 
     const wss = new WebSocket.Server({ server: fastify.server })
 
